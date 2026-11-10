@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../page/auth/auth_view.dart';
 import '../../page/auth/auth_viewmodel.dart';
 import '../../page/home/home_view.dart';
+import '../../page/vendor/vendor_view.dart';
 import 'app_routes.dart';
 
 abstract final class AppRouter {
@@ -49,6 +50,15 @@ abstract final class AppRouter {
           name: AppRoutes.forgotPassword,
           builder: (context, state) =>
               authPage(context, state, AuthMode.resetPassword),
+        ),
+        GoRoute(
+          path: '/vendor/:vendorId',
+          name: 'vendor',
+          builder: (context, state) {
+            final vendorId = state.pathParameters['vendorId'] ?? '0';
+
+            return VendorView(vendorId: vendorId);
+          },
         ),
       ],
       errorBuilder: (context, state) => Scaffold(

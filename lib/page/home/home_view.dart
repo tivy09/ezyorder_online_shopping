@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/router/app_routes.dart';
+import '../../component/toolbox/app_header.dart';
+import '../../component/toolbox/app_footer.dart';
 import 'home_viewmodel.dart';
 
 const _purple = Color(0xFF3925DF);
@@ -21,13 +22,41 @@ class _HomeViewState extends State<HomeView> {
   final scroll = ScrollController();
   final catalogKey = GlobalKey();
   final storesKey = GlobalKey();
-  static const categories = [
-    'All Departments',
-    'Electronics & Audio',
-    'Artisan Home',
-    'Fashion & Apparel',
-    'Health & Wellness',
-  ];
+
+  String? _lastBrowseUri;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final uri = GoRouterState.of(context).uri;
+    if (_lastBrowseUri == uri.toString()) return;
+    _lastBrowseUri = uri.toString();
+    final action = uri.queryParameters['action'];
+    if (action == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      model.clearFilters();
+      search.text = uri.queryParameters['q'] ?? '';
+      model.update(() {
+        model.query = search.text;
+        final category = uri.queryParameters['category'];
+        if (category != null && AppHeader.categories.contains(category)) {
+          model.category = category;
+        }
+        model.dealsOnly = action == 'deals';
+        model.favoritesOnly = action == 'wishlist';
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (action == 'cart') {
+          _cart();
+        } else if (action == 'stores') {
+          jump(storesKey);
+        } else {
+          jump(catalogKey);
+        }
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -64,6 +93,13 @@ class _HomeViewState extends State<HomeView> {
     ),
   );
 
+  void _openVendor(int storeIndex) {
+    context.pushNamed(
+      'vendor',
+      pathParameters: {'vendorId': storeIndex.toString()},
+    );
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: model,
@@ -74,7 +110,41 @@ class _HomeViewState extends State<HomeView> {
           return CustomScrollView(
             controller: scroll,
             slivers: [
-              SliverToBoxAdapter(child: _header(mobile)),
+              SliverToBoxAdapter(
+                child: AppHeader(
+                  searchController: search,
+                  selectedCategory: model.category,
+                  cartCount: model.cartCount,
+                  wishlistSelected: model.favoritesOnly,
+                  onSearchChanged: (value) =>
+                      model.update(() => model.query = value),
+                  onSearchSubmitted: (value) {
+                    model.update(() => model.query = value);
+                    jump(catalogKey);
+                  },
+                  onCategorySelected: (value) {
+                    model.update(() => model.category = value);
+                    jump(catalogKey);
+                  },
+                  onStores: () => jump(storesKey),
+                  onDeals: () {
+                    model.update(() => model.dealsOnly = true);
+                    jump(catalogKey);
+                  },
+                  onWishlist: () {
+                    model.update(
+                      () => model.favoritesOnly = !model.favoritesOnly,
+                    );
+                    jump(catalogKey);
+                  },
+                  onCart: _cart,
+                  onLogo: () => scroll.animateTo(
+                    0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  ),
+                ),
+              ),
               SliverToBoxAdapter(
                 child: Center(
                   child: ConstrainedBox(
@@ -103,7 +173,21 @@ class _HomeViewState extends State<HomeView> {
                   ),
                 ),
               ),
-              SliverToBoxAdapter(child: _footer(mobile)),
+              SliverToBoxAdapter(
+                child: AppFooter(
+                  onExplore: () => jump(catalogKey),
+                  onStores: _directory,
+                  onDeals: () {
+                    model.update(() => model.dealsOnly = true);
+                    jump(catalogKey);
+                  },
+                  onLogo: () => scroll.animateTo(
+                    0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  ),
+                ),
+              ),
             ],
           );
         },
@@ -206,243 +290,6 @@ class _HomeViewState extends State<HomeView> {
     ),
     child: child,
   );
-  Widget _logo() => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        padding: const EdgeInsets.all(7),
-        decoration: BoxDecoration(
-          color: _pale,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: const Icon(
-          Icons.shopping_bag_outlined,
-          color: _purple,
-          size: 20,
-        ),
-      ),
-      const SizedBox(width: 9),
-      _text('EzyOrder', size: 23, weight: FontWeight.w700),
-    ],
-  );
-
-  Widget _header(bool mobile) => Column(
-    children: [
-      Container(
-        color: const Color(0xFFF0EFFF),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1216),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _text(
-                    'Free verified logistics & split-order delivery on orders over RM 50',
-                    size: 11,
-                  ),
-                ),
-                if (!mobile) ...[
-                  _link(
-                    'Become a Vendor',
-                    () => info(
-                      'Become a Vendor',
-                      'Vendor registration will be connected to your EzyOrder merchant onboarding.',
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-                  _text('MYR (RM)   ⌄      EN   ⌄', size: 11),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-      Container(
-        color: Colors.white,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1280),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: mobile ? 16 : 32,
-                vertical: 18,
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      if (mobile)
-                        SizedBox(width: 120, child: FittedBox(child: _logo()))
-                      else
-                        _logo(),
-                      SizedBox(width: mobile ? 4 : 20),
-                      if (!mobile &&
-                          MediaQuery.sizeOf(context).width > 1100) ...[
-                        const Icon(
-                          Icons.location_on_outlined,
-                          color: _purple,
-                          size: 20,
-                        ),
-                        _text('Deliver to\nMalaysia', size: 11),
-                        const SizedBox(width: 20),
-                      ],
-                      if (!mobile) Expanded(child: _search()),
-                      if (mobile) const Spacer(),
-                      if (!mobile)
-                        _link('Stores & Vendors', () => jump(storesKey)),
-                      IconButton(
-                        tooltip: 'Your wishlist',
-                        onPressed: () {
-                          model.update(
-                            () => model.favoritesOnly = !model.favoritesOnly,
-                          );
-                          jump(catalogKey);
-                        },
-                        icon: Icon(
-                          model.favoritesOnly
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          size: 22,
-                          color: _ink,
-                        ),
-                      ),
-                      Badge(
-                        isLabelVisible: model.cartCount > 0,
-                        label: Text('${model.cartCount}'),
-                        child: IconButton(
-                          tooltip: 'Shopping cart',
-                          onPressed: _cart,
-                          icon: const Icon(
-                            Icons.shopping_bag_outlined,
-                            size: 22,
-                          ),
-                        ),
-                      ),
-                      if (!mobile) const SizedBox(width: 12),
-                      IconButton(
-                        tooltip: 'Sign in or create an account',
-                        onPressed: () => context.goNamed(AppRoutes.auth),
-                        icon: const Icon(
-                          Icons.person_outline,
-                          color: _purple,
-                          size: 23,
-                        ),
-                      ),
-                      if (!mobile)
-                        _link('Sign in', () => context.goNamed(AppRoutes.auth)),
-                    ],
-                  ),
-                  if (mobile) ...[const SizedBox(height: 15), _search()],
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    height: 35,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        for (final category in categories)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: TextButton(
-                              style: TextButton.styleFrom(
-                                backgroundColor: model.category == category
-                                    ? _purple
-                                    : Colors.transparent,
-                                foregroundColor: model.category == category
-                                    ? Colors.white
-                                    : _ink,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                              onPressed: () {
-                                model.update(() => model.category = category);
-                                jump(catalogKey);
-                              },
-                              child: Text(
-                                category,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                        _link('Featured Vendors', () => jump(storesKey)),
-                        _link('Flash Deals', () {
-                          model.update(() => model.dealsOnly = true);
-                          jump(catalogKey);
-                        }),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      Container(
-        color: const Color(0xFFE7E6FF),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1216),
-            child: Row(
-              children: [
-                const Icon(Icons.bolt, color: Colors.orange, size: 13),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _text(
-                    'FLASH SPOTLIGHT:  Independent artisans. One beautifully simple checkout.',
-                    size: 11,
-                  ),
-                ),
-                if (!mobile)
-                  _text(
-                    '◈  100% Escrow Protected       |       Direct merchant dispatch',
-                    size: 11,
-                    color: _purple,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ],
-  );
-  Widget _search() => Container(
-    height: 42,
-    decoration: BoxDecoration(
-      color: const Color(0xFFF3F2FF),
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Row(
-      children: [
-        const SizedBox(width: 12),
-        if (MediaQuery.sizeOf(context).width > 1100) ...[
-          _text('All Categories ⌄', size: 11, weight: FontWeight.w600),
-          const SizedBox(width: 12),
-        ],
-        Expanded(
-          child: TextField(
-            controller: search,
-            onChanged: (value) => model.update(() => model.query = value),
-            onSubmitted: (_) => jump(catalogKey),
-            style: const TextStyle(fontSize: 12),
-            decoration: const InputDecoration(
-              hintText: 'Search verified vendors, handcrafted goods, tech…',
-              border: InputBorder.none,
-              isDense: true,
-            ),
-          ),
-        ),
-        IconButton(
-          tooltip: 'Search products',
-          onPressed: () => jump(catalogKey),
-          icon: const Icon(Icons.search, color: _purple, size: 22),
-        ),
-      ],
-    ),
-  );
-
   Widget _hero(bool mobile) => Container(
     padding: EdgeInsets.all(mobile ? 24 : 40),
     decoration: BoxDecoration(
@@ -715,13 +562,18 @@ class _HomeViewState extends State<HomeView> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _button('Visit Storefront', () {
-                        model.update(() {
-                          model.selectedStores.clear();
-                          model.selectedStores.add(i);
-                        });
-                        jump(catalogKey);
-                      }, pale: true),
+                      // _button('Visit Storefront', () {
+                      //   model.update(() {
+                      //     model.selectedStores.clear();
+                      //     model.selectedStores.add(i);
+                      //   });
+                      //   jump(catalogKey);
+                      // }, pale: true),
+                      _button(
+                        'Visit Storefront',
+                        () => _openVendor(i),
+                        pale: true,
+                      ),
                     ],
                   ),
                   padding: const EdgeInsets.all(14),
@@ -1408,181 +1260,6 @@ class _HomeViewState extends State<HomeView> {
     ),
   );
 
-  Widget _footer(bool mobile) => Container(
-    color: const Color(0xFFF2F1FF),
-    padding: EdgeInsets.symmetric(horizontal: mobile ? 24 : 40, vertical: 44),
-    child: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1216),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            LayoutBuilder(
-              builder: (context, c) => Wrap(
-                spacing: 40,
-                runSpacing: 30,
-                alignment: WrapAlignment.spaceBetween,
-                children: [
-                  SizedBox(
-                    width: mobile ? c.maxWidth : 335,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _logo(),
-                        const SizedBox(height: 18),
-                        _text(
-                          'The multi-vendor marketplace connecting verified independent artisans, technology providers, and premium storefronts with unified logistics and split fulfillment.',
-                          size: 14,
-                          color: _muted,
-                        ),
-                        const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            for (final icon in [
-                              Icons.language,
-                              Icons.mail_outline,
-                              Icons.description_outlined,
-                              Icons.chat_bubble_outline,
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: const Color(0xFFDFDFFA),
-                                  child: Icon(icon, size: 15, color: _muted),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  for (final group in [
-                    [
-                      'Marketplace',
-                      'Explore Products',
-                      'Stores Directory',
-                      'Daily Flash Deals',
-                      'Track Multi-Order',
-                    ],
-                    [
-                      'Seller Hub',
-                      'Apply as Vendor',
-                      'Merchant Portal',
-                      'Fulfillment & APIs',
-                      'Payout Guarantees',
-                    ],
-                  ])
-                    SizedBox(
-                      width: 155,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _text(group[0], size: 14, weight: FontWeight.w600),
-                          const SizedBox(height: 16),
-                          for (final label in group.skip(1))
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: InkWell(
-                                onTap: () {
-                                  if (label == 'Explore Products') {
-                                    jump(catalogKey);
-                                  } else if (label == 'Stores Directory') {
-                                    _directory();
-                                  } else if (label == 'Daily Flash Deals') {
-                                    model.update(() => model.dealsOnly = true);
-                                    jump(catalogKey);
-                                  } else {
-                                    info(
-                                      label,
-                                      'This demo page is ready for your EzyOrder routes and API integration.',
-                                    );
-                                  }
-                                },
-                                child: _text(label, size: 13, color: _muted),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  SizedBox(
-                    width: mobile ? c.maxWidth : 300,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _text(
-                          'Security & Guarantee',
-                          size: 14,
-                          weight: FontWeight.w600,
-                        ),
-                        const SizedBox(height: 16),
-                        _boxed(
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _text(
-                                '◈  Decentralized Escrow Shield',
-                                size: 12,
-                                weight: FontWeight.w600,
-                              ),
-                              const SizedBox(height: 6),
-                              _text(
-                                'Payments are held secure until each individual vendor confirms dispatch and tracking delivery is stamped.',
-                                size: 11,
-                                color: _muted,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _text(
-                          'Visa / MC     Apple Pay     Stripe Connect',
-                          size: 10,
-                          weight: FontWeight.w600,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 60),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              spacing: 80,
-              runSpacing: 14,
-              children: [
-                _text(
-                  '© ${DateTime.now().year} EzyOrder. All rights reserved.',
-                  size: 11,
-                  color: _muted,
-                ),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 12,
-                  children: [
-                    for (final label in [
-                      'Terms of Service',
-                      'Privacy & Data Rights',
-                      'Vendor Dispute Resolution',
-                    ])
-                      InkWell(
-                        onTap: () => info(
-                          label,
-                          'Add your published EzyOrder policy here before launch.',
-                        ),
-                        child: _text(label, size: 11, color: _muted),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-
   void _detail(ShopProduct p) => showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -1634,13 +1311,17 @@ class _HomeViewState extends State<HomeView> {
               title: Text(s.name),
               subtitle: Text('${s.location} · ${s.category}'),
               trailing: const Icon(Icons.chevron_right),
+              // onTap: () {
+              //   model.update(() {
+              //     model.selectedStores.clear();
+              //     model.selectedStores.add(i);
+              //   });
+              //   ctx.pop();
+              //   jump(catalogKey);
+              // },
               onTap: () {
-                model.update(() {
-                  model.selectedStores.clear();
-                  model.selectedStores.add(i);
-                });
                 ctx.pop();
-                jump(catalogKey);
+                _openVendor(i);
               },
             );
           }),
